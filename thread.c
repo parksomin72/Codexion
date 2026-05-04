@@ -21,9 +21,11 @@ typedef struct s_info {
     int number_of_compiles_required;
     int dongle_cooldown;
     int scheduler;
+    int simulation_stop;
     long start_time;
 
     pthread_mutex_t print_m;
+    pthread_mutex_t stop_m;
     t_dongle *dongles;
 } t_info;
 
@@ -120,12 +122,48 @@ int has_more_compiles(t_coder *coder)
     return (0);
 }
 
+int simulation_running(t_coder *coder)
+{
+    int n;
+
+    pthread_mutex_lock(&coder->info->stop_m);
+    n = coder->info->simulation_stop;
+    pthread_mutex_unlock(&coder->info->stop_m);
+    if (n)
+        return (0);
+    return (1);
+}
+
+void set_simulation_stop(t_info *info)
+{
+    pthread_mutex_lock(&info->stop_m);
+    info->simulation_stop = 1;
+    pthread_mutex_unlock(&info->stop_m);
+}
+
+void check_simulation_state(t_coder *coder)
+{
+    long last;
+    long now;
+    
+    pthread_mutex_lock(&coder->state_m);
+    last = coder->last_compile_start;
+    pthread_mutex_unlock(&coder->state_m);
+    
+    now = get_time_ms() - coder->info->start_time;
+
+    if (now - last >= coder->info->time_to_burnout)
+        set_simulation_stop(coder->info);
+     
+}
+
 void *routine(void *arg)
 {
     t_coder *coder = (t_coder *)arg;
 
 
-    while (has_more_compiles(coder))
+    
+    while (has_more_compiles(coder) && simulation_running(coder))
     {
             take_dongles(coder);
             print_msg(coder, "has taken a dongle");
@@ -134,7 +172,7 @@ void *routine(void *arg)
             pthread_mutex_lock(&coder->state_m);
             coder->last_compile_start = get_time_ms() - coder->info->start_time;
             pthread_mutex_unlock(&coder->state_m);
-            
+
             print_msg(coder, "is compiling");
             
             usleep(coder->info->time_to_compile * 1000);
@@ -155,8 +193,9 @@ void init_info(t_info *info, t_coder *coder, int n)
     int i;
 
     
-    init_index(coder, n);
     i = 0;
+    init_index(coder, n);
+    pthread_mutex_init(&info->stop_m, NULL);
     while (i < n)
     {
         pthread_mutex_init(&info->dongles[i].m, NULL);
@@ -194,6 +233,7 @@ int main() {
     info.time_to_debug = 100;
     info.time_to_refactor = 100;
     info.number_of_compiles_required = 1;
+    info.simulation_stop = 0;
     coder = malloc(sizeof(t_coder) * n);
     info.dongles = malloc(sizeof(t_dongle) * n);
     
@@ -210,6 +250,7 @@ int main() {
         pthread_mutex_destroy(&info.dongles[i].m);
         pthread_mutex_destroy(&coder[i].state_m);
     }
+    pthread_mutex_destroy(&info.stop_m);
 
     free(info.dongles);
     free(coder);
