@@ -34,6 +34,7 @@ typedef struct s_coder {
     long last_compile_start;
     int compile_count;
     pthread_t thread;
+    pthread_mutex_t state_m;
     t_info *info;
 } t_coder;
 
@@ -107,26 +108,45 @@ void release_dongles(t_coder *coder)
     }
 }
 
+int has_more_compiles(t_coder *coder)
+{
+    int n;
+
+    pthread_mutex_lock(&coder->state_m);
+    n = coder->compile_count;
+    pthread_mutex_unlock(&coder->state_m);
+    if (n < coder->info->number_of_compiles_required)
+        return (1);
+    return (0);
+}
+
 void *routine(void *arg)
 {
     t_coder *coder = (t_coder *)arg;
 
 
-    while (coder->compile_count < coder->info->number_of_compiles_required)
+    while (has_more_compiles(coder))
     {
-        take_dongles(coder);
-        print_msg(coder, "has taken a dongle");
-        print_msg(coder, "has taken a dongle");
-        coder->last_compile_start = get_time_ms() - coder->info->start_time;
-        printf("last_compile_start = %ld\n", coder->last_compile_start);
-        print_msg(coder, "is compiling");
-        
-        usleep(coder->info->time_to_compile * 1000);
-        coder->compile_count++;
-        release_dongles(coder);
-        debug_and_refactor(coder);
+            take_dongles(coder);
+            print_msg(coder, "has taken a dongle");
+            print_msg(coder, "has taken a dongle");
+    
+            pthread_mutex_lock(&coder->state_m);
+            coder->last_compile_start = get_time_ms() - coder->info->start_time;
+            pthread_mutex_unlock(&coder->state_m);
+            
+            print_msg(coder, "is compiling");
+            
+            usleep(coder->info->time_to_compile * 1000);
+            
+            pthread_mutex_lock(&coder->state_m);
+            coder->compile_count++;
+            pthread_mutex_unlock(&coder->state_m);
+            
+            release_dongles(coder);
+            debug_and_refactor(coder);
     }
-
+    
     return NULL;
 }
 
@@ -140,6 +160,7 @@ void init_info(t_info *info, t_coder *coder, int n)
     while (i < n)
     {
         pthread_mutex_init(&info->dongles[i].m, NULL);
+        pthread_mutex_init(&coder[i].state_m, NULL);
         i++;
     }
     i = 0;
@@ -187,6 +208,7 @@ int main() {
     pthread_mutex_destroy(&info.print_m);
     for (int i = 0; i < n; i++) {
         pthread_mutex_destroy(&info.dongles[i].m);
+        pthread_mutex_destroy(&coder[i].state_m);
     }
 
     free(info.dongles);
