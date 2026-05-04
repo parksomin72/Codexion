@@ -47,18 +47,19 @@ void init_index(t_coder *coder, int n) {
     }
 }
 
-void debug_and_refactor(t_coder *coder)
+void print_msg(t_coder *coder, char *msg)
 {
     pthread_mutex_lock(&coder->info->print_m);
-    printf("%d is debugging\n", coder->id);
+    printf("%d %s\n", coder->id, msg);
     pthread_mutex_unlock(&coder->info->print_m);
+}
 
+void debug_and_refactor(t_coder *coder)
+{
+    print_msg(coder, "is debugging");
     usleep(coder->info->time_to_debug * 1000);
-
-    pthread_mutex_lock(&coder->info->print_m);
-    printf("%d is refactoring\n", coder->id);
-    pthread_mutex_unlock(&coder->info->print_m);
-
+    
+    print_msg(coder, "is refactoring");
     usleep(coder->info->time_to_refactor * 1000);
 }
 
@@ -150,7 +151,7 @@ int main() {
     info.time_to_compile = 100;
     info.time_to_debug = 100;
     info.time_to_refactor = 100;
-    info.number_of_compiles_required = 2;
+    info.number_of_compiles_required = 1;
     coder = malloc(sizeof(t_coder) * n);
     info.dongles = malloc(sizeof(t_dongle) * n);
 
