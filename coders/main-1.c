@@ -1,7 +1,8 @@
 #include <unistd.h>
-// #include <fcntl.h>
+#include <fcntl.h>
+#include <sys/time.h>
 #include <string.h>
-// #include <stdlib.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 typedef struct s_info {

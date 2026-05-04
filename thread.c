@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -20,6 +21,7 @@ typedef struct s_info {
     int number_of_compiles_required;
     int dongle_cooldown;
     int scheduler;
+    long start_time;
 
     pthread_mutex_t print_m;
     t_dongle *dongles;
@@ -36,7 +38,17 @@ typedef struct s_coder {
 } t_coder;
 
 
-void init_index(t_coder *coder, int n) {
+
+long get_time_ms()
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
+void init_index(t_coder *coder, int n)
+{
     int i;
 
     i = 0;
@@ -49,8 +61,12 @@ void init_index(t_coder *coder, int n) {
 
 void print_msg(t_coder *coder, char *msg)
 {
+    long time_now;
+
+    time_now = get_time_ms() - coder->info->start_time;
+
     pthread_mutex_lock(&coder->info->print_m);
-    printf("%d %s\n", coder->id, msg);
+    printf("%ld %d %s\n", time_now, coder->id, msg);
     pthread_mutex_unlock(&coder->info->print_m);
 }
 
@@ -63,48 +79,52 @@ void debug_and_refactor(t_coder *coder)
     usleep(coder->info->time_to_refactor * 1000);
 }
 
-void *routine(void *arg) {
+void take_dongles(t_coder *coder)
+{
+    if (coder->id % 2 == 0)
+    {
+        pthread_mutex_lock(&coder->info->dongles[coder->left_index].m);
+        pthread_mutex_lock(&coder->info->dongles[coder->right_index].m);
+    }
+    else
+    {
+        pthread_mutex_lock(&coder->info->dongles[coder->right_index].m);
+        pthread_mutex_lock(&coder->info->dongles[coder->left_index].m);
+    }
+}
+
+void release_dongles(t_coder *coder)
+{
+    if (coder->id % 2 == 0)
+    {
+        pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
+        pthread_mutex_unlock(&coder->info->dongles[coder->left_index].m);
+    }
+    else
+    {
+        pthread_mutex_unlock(&coder->info->dongles[coder->left_index].m);
+        pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
+    }
+}
+
+void *routine(void *arg)
+{
     t_coder *coder = (t_coder *)arg;
 
 
     while (coder->compile_count < coder->info->number_of_compiles_required)
     {
-        if (coder->id % 2 == 0)
-        {
-            pthread_mutex_lock(&coder->info->dongles[coder->left_index].m);
-            pthread_mutex_lock(&coder->info->dongles[coder->right_index].m);
-    
-            pthread_mutex_lock(&coder->info->print_m);
-            printf("%d has taken a dongle\n", coder->id);
-            printf("%d has taken a dongle\n", coder->id);
-            printf("%d is compiling\n", coder->id);
-            pthread_mutex_unlock(&coder->info->print_m);
-    
-            usleep(coder->info->time_to_compile * 1000);
-            coder->compile_count++;
-            
-            pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
-            pthread_mutex_unlock(&coder->info->dongles[coder->left_index].m);
-            debug_and_refactor(coder);
-        }
-    
-        else {
-            pthread_mutex_lock(&coder->info->dongles[coder->right_index].m);
-            pthread_mutex_lock(&coder->info->dongles[coder->left_index].m);
-    
-            pthread_mutex_lock(&coder->info->print_m);
-            printf("%d has taken a dongle\n", coder->id);
-            printf("%d has taken a dongle\n", coder->id);
-            printf("%d is compiling\n", coder->id);
-            pthread_mutex_unlock(&coder->info->print_m);
-    
-            usleep(coder->info->time_to_compile * 1000);        
-            coder->compile_count++;
-            
-            pthread_mutex_unlock(&coder->info->dongles[coder->left_index].m);
-            pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
-            debug_and_refactor(coder);
-        }
+        take_dongles(coder);
+        print_msg(coder, "has taken a dongle");
+        print_msg(coder, "has taken a dongle");
+        coder->last_compile_start = get_time_ms() - coder->info->start_time;
+        printf("last_compile_start = %ld\n", coder->last_compile_start);
+        print_msg(coder, "is compiling");
+        
+        usleep(coder->info->time_to_compile * 1000);
+        coder->compile_count++;
+        release_dongles(coder);
+        debug_and_refactor(coder);
     }
 
     return NULL;
@@ -127,6 +147,7 @@ void init_info(t_info *info, t_coder *coder, int n)
     {
         coder[i].id = i + 1;
         coder[i].compile_count = 0;
+        coder[i].last_compile_start = 0;
         coder[i].info = info;
         pthread_create(&coder[i].thread, NULL, routine, (void *)&coder[i]);
         i++;
@@ -154,12 +175,13 @@ int main() {
     info.number_of_compiles_required = 1;
     coder = malloc(sizeof(t_coder) * n);
     info.dongles = malloc(sizeof(t_dongle) * n);
-
+    
     if (!coder || !info.dongles) {
         return (1);
     }
-
+    
     pthread_mutex_init(&info.print_m, NULL);
+    info.start_time = get_time_ms();
     init_info(&info, coder, n);
     
     pthread_mutex_destroy(&info.print_m);
