@@ -1,59 +1,4 @@
-#include <pthread.h>
-#include <sys/time.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
-
-#define FIFO 0
-#define EDF 1
-
-
-typedef struct s_dongle {
-    long last_release_time;
-    pthread_mutex_t m;
-} t_dongle;
-
-typedef struct s_info {
-    int number_of_coders;
-    int time_to_burnout;
-    int time_to_compile;
-    int time_to_debug;
-    int time_to_refactor;
-    int number_of_compiles_required;
-    int dongle_cooldown;
-    int scheduler;
-    int simulation_stop;
-    long start_time;
-    
-    pthread_mutex_t print_m;
-    int death_printed;
-    pthread_mutex_t stop_m;
-    t_dongle *dongles;
-} t_info;
-
-typedef struct s_coder {
-    int id;
-    int left_index;
-    int right_index;
-    long last_compile_start;
-    int compile_count;
-    pthread_t thread;
-    pthread_mutex_t state_m;
-    t_info *info;
-} t_coder;
-
-typedef struct s_monitor {
-    t_info *info;
-    t_coder *coders;
-} t_monitor;
-
-typedef struct s_request {
-    int coder_id;
-    long request_time;
-    long deadline;
-    t_coder *coder;
-} t_request;
+#include "coders.h"
 
 long get_time_ms()
 {
@@ -75,51 +20,22 @@ void init_index(t_coder *coder, int n)
     }
 }
 
-void wait_cooldown(t_dongle *dongle, t_info *info)
-{
-    long now;
-
-    while (1)
-    {
-        now = get_time_ms() - info->start_time;
-        if (now - dongle->last_release_time >= info->dongle_cooldown)
-            break;
-        usleep(100);
-    }
-}
-
 void take_dongles(t_coder *coder)
 {
-    int first;
-    int second;
-
     if (coder->id % 2 == 0)
     {
-        first = coder->left_index;
-        second = coder->right_index;
+        pthread_mutex_lock(&coder->info->dongles[coder->left_index].m);
+        pthread_mutex_lock(&coder->info->dongles[coder->right_index].m);
     }
     else
     {
-        first = coder->right_index;
-        second = coder->left_index;
+        pthread_mutex_lock(&coder->info->dongles[coder->right_index].m);
+        pthread_mutex_lock(&coder->info->dongles[coder->left_index].m);
     }
-
-    pthread_mutex_lock(&coder->info->dongles[first].m);
-    wait_cooldown(&coder->info->dongles[first], coder->info);
-
-    pthread_mutex_lock(&coder->info->dongles[second].m);
-    wait_cooldown(&coder->info->dongles[second], coder->info);
 }
 
 void release_dongles(t_coder *coder)
 {
-    long now;
-
-    now = get_time_ms() - coder->info->start_time;
-
-    coder->info->dongles[coder->left_index].last_release_time = now;
-    coder->info->dongles[coder->right_index].last_release_time = now;
-
     if (coder->id % 2 == 0)
     {
         pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
@@ -212,22 +128,6 @@ void debug_and_refactor(t_coder *coder)
     }
 }
 
-int all_coders_done(t_coder *coder, t_info *info)
-{
-    int i;
-    int count;
-
-    i = 0;
-    while (i < info->number_of_coders){
-        pthread_mutex_lock(&coder[i].state_m);
-        count = coder[i].compile_count;
-        pthread_mutex_unlock(&coder[i].state_m);
-        if (count < info->number_of_compiles_required)
-            return (0);
-        i++;
-    }
-    return (1);
-}
 
 void *monitor_routine(void *arg)
 {
@@ -246,10 +146,6 @@ void *monitor_routine(void *arg)
             }
             i++;
         }
-        if (all_coders_done(monitor->coders, monitor->coders->info)) {
-            set_simulation_stop(monitor->coders->info);
-            return (NULL);
-        }
         usleep(1000);
     }
     return (NULL);
@@ -258,34 +154,25 @@ void *monitor_routine(void *arg)
 void *routine(void *arg)
 {
     t_coder *coder = (t_coder *)arg;
-
-
     
     while (has_more_compiles(coder) && simulation_running(coder))
     {
         take_dongles(coder);
         print_msg(coder, "has taken a dongle");
         print_msg(coder, "has taken a dongle");
-
         pthread_mutex_lock(&coder->state_m);
         coder->last_compile_start = get_time_ms() - coder->info->start_time;
         pthread_mutex_unlock(&coder->state_m);
         print_msg(coder, "is compiling");
-        
         usleep(coder->info->time_to_compile * 1000);
-        
         pthread_mutex_lock(&coder->state_m);
         coder->compile_count++;
         pthread_mutex_unlock(&coder->state_m);
-        
         release_dongles(coder);
-        
-        if (!simulation_running(coder) || !has_more_compiles(coder)) {
+        if (!simulation_running(coder))
             return NULL;
-        }
         debug_and_refactor(coder);
     }
-    
     return NULL;
 }
 
@@ -297,7 +184,6 @@ void init_mutex(t_coder *coder, t_info *info, int n)
     pthread_mutex_init(&info->stop_m, NULL);
     while (i < n)
     {
-        info->dongles[i].last_release_time = -info->dongle_cooldown;
         pthread_mutex_init(&info->dongles[i].m, NULL);
         pthread_mutex_init(&coder[i].state_m, NULL);
         i++;
@@ -340,105 +226,3 @@ void init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n)
     pthread_join(monitor_t, NULL);
 }
 
-int main() {
-    int n;
-
-    scanf("%d", &n);
-    t_info info;
-    t_coder *coder;
-    t_monitor monitor;
-    
-    info.number_of_coders = n;
-    info.time_to_compile = 100;
-    info.time_to_debug = 100;
-    info.time_to_refactor = 100;
-    info.number_of_compiles_required = 2;
-    info.simulation_stop = 0;
-    info.time_to_burnout = 1000;
-    info.dongle_cooldown = 50;
-    coder = malloc(sizeof(t_coder) * n);
-    info.dongles = malloc(sizeof(t_dongle) * n);
-    
-    if (!coder || !info.dongles) {
-        return (1);
-    }
-    
-    monitor.info = &info;
-    monitor.coders = coder;
-    pthread_mutex_init(&info.print_m, NULL);
-    info.start_time = get_time_ms();
-    init_info(&info, coder, &monitor,  n);
-    
-    pthread_mutex_destroy(&info.print_m);
-    for (int i = 0; i < n; i++) {
-        pthread_mutex_destroy(&info.dongles[i].m);
-        pthread_mutex_destroy(&coder[i].state_m);
-    }
-    pthread_mutex_destroy(&info.stop_m);
-
-    free(info.dongles);
-    free(coder);
-
-    return (0);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// typedef struct s_data {
-//     int x;
-//     pthread_mutex_t m;
-// } t_data;
-
-// void *routine(void *args) {
-//     t_data *arg = (t_data *)args;
-//     pthread_mutex_lock(&arg->m);
-//     for(int i = 0; i < 1000; i++)
-//         arg->x++;
-//     pthread_mutex_unlock(&arg->m);
-//     return NULL;
-// }
-
-// int main() {
-//     t_data s;
-//     s.x = 0;
-//     pthread_t t1, t2;
-//     pthread_mutex_init(&s.m, NULL);
-
-//     pthread_create(&t1, NULL, routine, (void *)&s);
-//     pthread_create(&t2, NULL, routine, (void *)&s);
-//     pthread_join(t1, NULL);
-//     pthread_join(t2, NULL);
-//     printf("final = %d\n", s.x);
-//     pthread_mutex_destroy(&s.m);
-// }
