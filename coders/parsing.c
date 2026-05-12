@@ -1,14 +1,29 @@
-#include "coders.h"
+#include "main.h"
+// #include <stddef.h>
 
-int fall_scheduler(char *s, t_info *info)
+long get_time_ms()
 {
-    if (strcmp(s, "fifo") == 0)
-        info->scheduler = 0;
-    else if (strcmp(s, "edf") == 0)
-        info->scheduler = 1;
-    else
-        return (0);
-    return (1);
+    struct timeval tv;
+    long result;
+    
+    gettimeofday(&tv, NULL);
+    result = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (result);
+}
+
+int check_scheduler(char *av, t_info *info)
+{
+    if (strcmp(av, "fifo") == 0)
+    {
+        info->scheduler = FIFO;
+        return (1);
+    }
+    else if (strcmp(av, "edf") == 0)
+    {
+        info->scheduler = EDF;
+        return (1);
+    }
+    return (0);
 }
 
 int check(char **av, t_info *info)
@@ -28,7 +43,8 @@ int check(char **av, t_info *info)
         }
         i++;
     }
-    if (!fall_scheduler(av[8], info))
+
+    if (!check_scheduler(av[i], info))
         return (0);
     return (1);
 }
@@ -63,7 +79,7 @@ int convert(char **av, t_info *coders_info)
     n = 0;
     while (i < 7) {
         n = ft_atoi(av[i + 1], &flag);
-        if (flag == 1 || n <= 0)
+        if (flag == 1 || (i != 6 && n <= 0))
             return (0);
         info[i] = n;
         i++;
@@ -77,33 +93,4 @@ int convert(char **av, t_info *coders_info)
     coders_info->number_of_compiles_required = info[5];
     coders_info->dongle_cooldown = info[6];
     return (1);
-}
-
-int allocate(t_info *info, t_coder *coder, int size)
-{
-    coder = malloc(sizeof(t_coder) * size);
-    if (!coder)
-        return (0);
-    info.dongles = malloc(sizeof(t_dongles) * size);
-    if (!info.dongles) {
-        free(coder);
-        return (0);
-    }
-    return (1);
-}
-
-int main(int ac, char **av)
-{
-    int n;
-    t_info info;
-    t_coder *coder;
-    t_monitor monitor;
-
-    if (ac != 9 || !check(av, &info) ||  !convert(av, &info)) {
-        write(2, "Error\n", 6);
-        return (1);
-    }
-    n = info.number_of_coders;
-    printf("number_of_coders = %d\n", n);
-
 }
