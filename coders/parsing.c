@@ -36,6 +36,8 @@ int check(char **av, t_info *info)
         j = 0;
         if (!av[i][j])
             return (0);
+        if (av[i][j] == '+')
+            j++;
         while (av[i][j]) {
             if (!(av[i][j] >= '0' && av[i][j] <= '9'))
                 return (0);
@@ -55,6 +57,8 @@ int ft_atoi(char *s, int *flag)
     long res;
 
     res = 0;
+    if (*s == '+')
+        s++;
     while (*s >= '0' && *s <= '9')
     {
         res = res * 10 + (*s - '0');

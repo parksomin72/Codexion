@@ -15,8 +15,11 @@
 
 
 typedef struct s_dongle {
+    int dongle_available;
     long last_release_time;
     pthread_mutex_t m;
+    pthread_cond_t cond;
+    // t_heap queue;
 } t_dongle;
 
 typedef struct s_info {
@@ -53,6 +56,12 @@ typedef struct s_monitor {
     t_coder *coders;
 } t_monitor;
 
+typedef struct s_request {
+    int coder_id;
+    long request_time;
+    long deadline;
+    t_coder *coder;
+} t_request;
 
 /* Prototype of functions */
 int check(char **av, t_info *info);

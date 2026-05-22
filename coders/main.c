@@ -1,17 +1,5 @@
 #include "main.h"
 
-void init_index(t_coder *coder, int n)
-{
-    int i;
-    
-    i = 0;
-    while (i < n) {
-        coder[i].left_index = i;
-        coder[i].right_index = (i + 1) % n;
-        i++;
-    }
-}
-
 void wait_cooldown(t_dongle *dongle, t_info *info)
 {
     long now;
@@ -23,6 +11,34 @@ void wait_cooldown(t_dongle *dongle, t_info *info)
             break;
         usleep(100);
     }
+}
+
+void take_one_dongle(t_coder *coder, int index)
+{
+    t_dongle *dongle;
+
+    dongle = &coder->info->dongles[index];
+    pthread_mutex_lock(&dongle->m);
+    while (!dongle->dongle_available)
+        pthread_cond_wait(&dongle->cond, &dongle->m);
+    dongle->dongle_available = 0;
+    pthread_mutex_unlock(&dongle->m);
+}
+
+void release_one_dongle(t_coder *coder, int index)
+{
+    t_dongle *dongle;
+
+    dongle = &coder->info->dongles[index];
+
+    pthread_mutex_lock(&dongle->m);
+
+    dongle->dongle_available = 1;
+    dongle->last_release_time = get_time_ms() - coder->info->start_time;
+
+    pthread_cond_broadcast(&dongle->cond);
+
+    pthread_mutex_unlock(&dongle->m);
 }
 
 void take_dongles(t_coder *coder)
@@ -41,31 +57,21 @@ void take_dongles(t_coder *coder)
         second = coder->left_index;
     }
 
-    pthread_mutex_lock(&coder->info->dongles[first].m);
-    wait_cooldown(&coder->info->dongles[first], coder->info);
-
-    pthread_mutex_lock(&coder->info->dongles[second].m);
-    wait_cooldown(&coder->info->dongles[second], coder->info);
+    take_one_dongle(coder, first);    
+    take_one_dongle(coder, second);
 }
 
 void release_dongles(t_coder *coder)
 {
-    long now;
-
-    now = get_time_ms() - coder->info->start_time;
-
-    coder->info->dongles[coder->left_index].last_release_time = now;
-    coder->info->dongles[coder->right_index].last_release_time = now;
-
     if (coder->id % 2 == 0)
     {
-        pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
-        pthread_mutex_unlock(&coder->info->dongles[coder->left_index].m);
+        release_one_dongle(coder, coder->right_index);
+        release_one_dongle(coder, coder->left_index);        
     }
     else
     {
-        pthread_mutex_unlock(&coder->info->dongles[coder->left_index].m);
-        pthread_mutex_unlock(&coder->info->dongles[coder->right_index].m);
+        release_one_dongle(coder, coder->left_index);
+        release_one_dongle(coder, coder->right_index);
     }
 }
 
@@ -194,11 +200,11 @@ void *monitor_routine(void *arg)
 
 void has_one_coder(t_coder *coder)
 {
-    pthread_mutex_lock(&coder->info->dongles[0].m);
+    take_one_dongle(coder, 0);
     print_msg(coder, "has taken a dongle");
     while (simulation_running(coder))
         usleep(100);
-    pthread_mutex_unlock(&coder->info->dongles[0].m);
+    release_one_dongle(coder, 0);
 }
 
 void *routine(void *arg)
@@ -238,25 +244,11 @@ void *routine(void *arg)
     return NULL;
 }
 
-void init_mutex(t_coder *coder, t_info *info, int n)
-{
-    int i;
-
-    i = 0;
-    pthread_mutex_init(&info->stop_m, NULL);
-    while (i < n)
-    {
-        info->dongles[i].last_release_time = -info->dongle_cooldown;
-        pthread_mutex_init(&info->dongles[i].m, NULL);
-        pthread_mutex_init(&coder[i].state_m, NULL);
-        i++;
-    }
-}
 
 void create_coder_thread(t_coder *coder, t_info *info, int n)
 {
     int i;
-
+    
     i = 0;
     info->death_printed = 0;
     while (i < n)
@@ -266,6 +258,35 @@ void create_coder_thread(t_coder *coder, t_info *info, int n)
         coder[i].last_compile_start = 0;
         coder[i].info = info;
         pthread_create(&coder[i].thread, NULL, routine, (void *)&coder[i]);
+        i++;
+    }
+}
+
+void init_mutex(t_coder *coder, t_info *info, int n)
+{
+    int i;
+
+    i = 0;
+    pthread_mutex_init(&info->stop_m, NULL);
+    while (i < n)
+    {
+        info->dongles[i].dongle_available = 1;
+        info->dongles[i].last_release_time = -info->dongle_cooldown;
+        pthread_mutex_init(&info->dongles[i].m, NULL);
+        pthread_cond_init(&info->dongles[i].cond, NULL);
+        pthread_mutex_init(&coder[i].state_m, NULL);
+        i++;
+    }
+}
+
+void init_index(t_coder *coder, int n)
+{
+    int i;
+    
+    i = 0;
+    while (i < n) {
+        coder[i].left_index = i;
+        coder[i].right_index = (i + 1) % n;
         i++;
     }
 }
@@ -301,6 +322,7 @@ void destroy(t_info *info, t_coder *coder, int n)
     pthread_mutex_destroy(&info->print_m);
     while (i < n)
     {
+        pthread_cond_destroy(&info->dongles[i].cond);
         pthread_mutex_destroy(&info->dongles[i].m);
         pthread_mutex_destroy(&coder[i].state_m);
         i++;
