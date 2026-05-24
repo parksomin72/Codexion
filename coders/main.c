@@ -1,16 +1,38 @@
 #include "main.h"
 
-void wait_cooldown(t_dongle *dongle, t_info *info)
+t_request make_request(t_coder *coder)
+{
+    t_request request;
+    long      last_compile;
+
+    pthread_mutex_lock(&coder->state_m);
+    last_compile = coder->last_compile_start;
+    pthread_mutex_unlock(&coder->state_m);
+
+    request.coder_id = coder->id;
+    request.request_time = get_time_ms() - coder->info->start_time;
+    request.deadline = last_compile + coder->info->time_to_burnout;
+    request.coder = coder;
+    return (request);
+}
+
+int heap_push(t_heap *heap, t_request request)
+{
+    if (heap->size >= heap->capacity)
+        return (0);
+    heap->arr[heap->size] = request;
+    heap->size++;
+    return (1);
+}
+
+int cooldown_not_finished(t_dongle *dongle, t_info *info)
 {
     long now;
 
-    while (1)
-    {
-        now = get_time_ms() - info->start_time;
-        if (now - dongle->last_release_time >= info->dongle_cooldown)
-            break;
-        usleep(100);
-    }
+    now = get_time_ms() - info->start_time;
+    if (now - dongle->last_release_time < info->dongle_cooldown)
+        return (1);
+    return (0);
 }
 
 void take_one_dongle(t_coder *coder, int index)
@@ -19,8 +41,18 @@ void take_one_dongle(t_coder *coder, int index)
 
     dongle = &coder->info->dongles[index];
     pthread_mutex_lock(&dongle->m);
-    while (!dongle->dongle_available)
-        pthread_cond_wait(&dongle->cond, &dongle->m);
+    while (!dongle->dongle_available
+        || cooldown_not_finished(dongle, coder->info))
+    {
+        if (!dongle->dongle_available)
+            pthread_cond_wait(&dongle->cond, &dongle->m);
+        else
+        {
+            pthread_mutex_unlock(&dongle->m);
+            usleep(100);
+            pthread_mutex_lock(&dongle->m);
+        }
+    }
     dongle->dongle_available = 0;
     pthread_mutex_unlock(&dongle->m);
 }
@@ -262,7 +294,7 @@ void create_coder_thread(t_coder *coder, t_info *info, int n)
     }
 }
 
-void init_mutex(t_coder *coder, t_info *info, int n)
+int init_mutex(t_coder *coder, t_info *info, int n)
 {
     int i;
 
@@ -272,11 +304,18 @@ void init_mutex(t_coder *coder, t_info *info, int n)
     {
         info->dongles[i].dongle_available = 1;
         info->dongles[i].last_release_time = -info->dongle_cooldown;
+        info->dongles[i].queue.capacity = info->number_of_coders;
+        info->dongles[i].queue.size = 0;
+        info->dongles[i].queue.arr = malloc(sizeof(t_request)
+                * info->number_of_coders);
+        if (!info->dongles[i].queue.arr)
+            return (0);
         pthread_mutex_init(&info->dongles[i].m, NULL);
         pthread_cond_init(&info->dongles[i].cond, NULL);
         pthread_mutex_init(&coder[i].state_m, NULL);
         i++;
     }
+    return (1);
 }
 
 void init_index(t_coder *coder, int n)
@@ -291,10 +330,10 @@ void init_index(t_coder *coder, int n)
     }
 }
 
-void init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n)
+int init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n)
 {
-    int i;
-    pthread_t monitor_t;
+    int         i;
+    pthread_t  monitor_t;
 
     i = 0;
     info->simulation_stop = 0;
@@ -302,7 +341,8 @@ void init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n)
     monitor->info = info;
     monitor->coders = coder;
     init_index(coder, n);
-    init_mutex(coder, info, n);
+    if (!init_mutex(coder, info, n))
+        return (0);
     create_coder_thread(coder, info, n);
     pthread_create(&monitor_t, NULL, monitor_routine, (void *)monitor);
     while (i < n)
@@ -312,6 +352,7 @@ void init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n)
     }
     set_simulation_stop(info);
     pthread_join(monitor_t, NULL);
+    return (1);
 }
 
 void destroy(t_info *info, t_coder *coder, int n)
@@ -323,6 +364,7 @@ void destroy(t_info *info, t_coder *coder, int n)
     while (i < n)
     {
         pthread_cond_destroy(&info->dongles[i].cond);
+        free(info->dongles[i].queue.arr);
         pthread_mutex_destroy(&info->dongles[i].m);
         pthread_mutex_destroy(&coder[i].state_m);
         i++;
@@ -359,7 +401,12 @@ int main(int ac, char **av) {
         return (1);
     pthread_mutex_init(&info.print_m, NULL);
     info.start_time = get_time_ms();
-    init_info(&info, coder, &monitor,  n);
+    if (!init_info(&info, coder, &monitor, n))
+    {
+        free(info.dongles);
+        free(coder);
+        return (1);
+    }
     destroy(&info, coder, n);
     free(info.dongles);
     free(coder);
