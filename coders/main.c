@@ -1,5 +1,14 @@
 #include "main.h"
 
+void swap_request(t_request *a, t_request *b)
+{
+    t_request tmp;
+
+    tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
 t_request make_request(t_coder *coder)
 {
     t_request request;
@@ -16,13 +25,71 @@ t_request make_request(t_coder *coder)
     return (request);
 }
 
-int heap_push(t_heap *heap, t_request request)
+int request_has_priority(t_request a, t_request b, int scheduler)
 {
+    if (scheduler == FIFO)
+    {
+        if (a.request_time < b.request_time)
+            return (1);
+        if (a.request_time == b.request_time && a.coder_id < b.coder_id)
+            return (1);
+        return (0);
+    }
+    if (scheduler == EDF)
+    {
+        if (a.deadline < b.deadline)
+            return (1);
+        if (a.deadline == b.deadline && a.request_time < b.request_time)
+            return (1);
+        if (a.deadline == b.deadline
+            && a.request_time == b.request_time
+            && a.coder_id < b.coder_id)
+            return (1);
+        return (0);
+    }
+    return (0);
+}
+
+int heap_push(t_heap *heap, t_request request, int scheduler)
+{
+    int i;
+
     if (heap->size >= heap->capacity)
         return (0);
     heap->arr[heap->size] = request;
+    i = heap->size;
     heap->size++;
+    while (i > 0
+        && request_has_priority(heap->arr[i], heap->arr[i - 1], scheduler))
+    {
+        swap_request(&heap->arr[i], &heap->arr[i - 1]);
+        i--;
+    }
     return (1);
+}
+
+int is_my_turn(t_heap *heap, int coder_id)
+{
+    if (heap->size == 0)
+        return (0);
+    if (heap->arr[0].coder_id == coder_id)
+        return (1);
+    return (0);
+}
+
+void pop_front(t_heap *heap)
+{
+    int i;
+
+    i = 0;
+    if (heap->size == 0)
+        return ;
+    while (i < heap->size - 1)
+    {
+        heap->arr[i] = heap->arr[i + 1];
+        i++;
+    }
+    heap->size--;
 }
 
 int cooldown_not_finished(t_dongle *dongle, t_info *info)
@@ -37,14 +104,23 @@ int cooldown_not_finished(t_dongle *dongle, t_info *info)
 
 void take_one_dongle(t_coder *coder, int index)
 {
-    t_dongle *dongle;
+    t_dongle   *dongle;
+    t_request  request;
 
     dongle = &coder->info->dongles[index];
+    request = make_request(coder);
+
     pthread_mutex_lock(&dongle->m);
-    while (!dongle->dongle_available
-        || cooldown_not_finished(dongle, coder->info))
+    if (!heap_push(&dongle->queue, request, coder->info->scheduler))
     {
-        if (!dongle->dongle_available)
+        pthread_mutex_unlock(&dongle->m);
+        return ;
+    }
+    while (!dongle->dongle_available
+    || cooldown_not_finished(dongle, coder->info)
+    || !is_my_turn(&dongle->queue, coder->id))
+    {
+        if (!dongle->dongle_available || !is_my_turn(&dongle->queue, coder->id))
             pthread_cond_wait(&dongle->cond, &dongle->m);
         else
         {
@@ -53,6 +129,7 @@ void take_one_dongle(t_coder *coder, int index)
             pthread_mutex_lock(&dongle->m);
         }
     }
+    pop_front(&dongle->queue);
     dongle->dongle_available = 0;
     pthread_mutex_unlock(&dongle->m);
 }
@@ -272,7 +349,6 @@ void *routine(void *arg)
         }
         debug_and_refactor(coder);
     }
-    
     return NULL;
 }
 
