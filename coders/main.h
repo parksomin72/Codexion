@@ -76,11 +76,39 @@ typedef struct s_monitor
 }   t_monitor;
 
 /* Prototypes */
-// int init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n)
+void init_index(t_coder *coder, int n);
+void *routine(void *arg);
+void *monitor_routine(void *arg);
+void has_one_coder(t_coder *coder);
+void swap_request(t_request *a, t_request *b);
+void take_one_dongle(t_coder *coder, int index);
+void release_one_dongle(t_coder *coder, int index);
+void take_dongles(t_coder *coder);
+void release_dongles(t_coder *coder);
+void pop_front(t_heap *heap);
+void check_simulation_state(t_coder *coder);
+void set_simulation_stop(t_info *info);
+void destroy(t_info *info, t_coder *coder, int n);
+void create_coder_thread(t_coder *coder, t_info *info, int n);
+void print_msg(t_coder *coder, char *msg);
+void debug_and_refactor(t_coder *coder);
+
 
 int     check(char **av, t_info *info);
 int     convert(char **av, t_info *coders_info);
-long    get_time_ms(void);
+int cooldown_not_finished(t_dongle *dongle, t_info *info);
+int init_info(t_info *info, t_coder *coder, t_monitor *monitor, int n);
+int init_mutex(t_coder *coder, t_info *info, int n);
+int request_has_priority(t_request a, t_request b, int scheduler);
+int is_my_turn(t_heap *heap, int coder_id);
+int heap_push(t_heap *heap, t_request request, int scheduler);
+int simulation_running(t_coder *coder);
+int allocate(t_info *info, t_coder **coder, int *n);
+int has_more_compiles(t_coder *coder);
+int all_coders_done(t_coder *coder, t_info *info);
+
+
+long    get_time_ms();
 t_request make_request(t_coder *coder);
 
 #endif
