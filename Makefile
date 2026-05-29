@@ -8,10 +8,10 @@ SRCS = coders/main.c \
        coders/routine.c \
        coders/init.c \
        coders/request.c \
-       coders/scheduler.c \
+       coders/queue.c \
        coders/simulation.c \
-       coders/threads.c \
-       coders/actions.c \
+       coders/cleanup.c \
+       coders/dongles.c \
        coders/time.c
 
 OBJS = $(SRCS:.c=.o)

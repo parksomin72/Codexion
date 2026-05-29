@@ -1,6 +1,20 @@
 #include "main.h"
 
-void take_one_dongle(t_coder *coder, int index)
+void wake_all_dongles(t_info *info)
+{
+    int i;
+
+    i = 0;
+    while (i < info->number_of_coders)
+    {
+        pthread_mutex_lock(&info->dongles[i].m);
+        pthread_cond_broadcast(&info->dongles[i].cond);
+        pthread_mutex_unlock(&info->dongles[i].m);
+        i++;
+    }
+}
+
+int take_one_dongle(t_coder *coder, int index)
 {
     t_dongle   *dongle;
     t_request  request;
@@ -12,11 +26,12 @@ void take_one_dongle(t_coder *coder, int index)
     if (!heap_push(&dongle->queue, request, coder->info->scheduler))
     {
         pthread_mutex_unlock(&dongle->m);
-        return ;
+        return (0);
     }
-    while (!dongle->dongle_available
+    while (simulation_running(coder)
+    && (!dongle->dongle_available
     || cooldown_not_finished(dongle, coder->info)
-    || !is_my_turn(&dongle->queue, coder->id))
+    || !is_my_turn(&dongle->queue, coder->id)))
     {
         if (!dongle->dongle_available || !is_my_turn(&dongle->queue, coder->id))
             pthread_cond_wait(&dongle->cond, &dongle->m);
@@ -27,9 +42,16 @@ void take_one_dongle(t_coder *coder, int index)
             pthread_mutex_lock(&dongle->m);
         }
     }
+    if (!simulation_running(coder))
+    {
+        remove_request(&dongle->queue, coder->id);
+        pthread_mutex_unlock(&dongle->m);
+        return (0);
+    }
     pop_front(&dongle->queue);
     dongle->dongle_available = 0;
     pthread_mutex_unlock(&dongle->m);
+    return (1);
 }
 
 void release_one_dongle(t_coder *coder, int index)
@@ -48,7 +70,7 @@ void release_one_dongle(t_coder *coder, int index)
     pthread_mutex_unlock(&dongle->m);
 }
 
-void take_dongles(t_coder *coder)
+int take_dongles(t_coder *coder)
 {
     int first;
     int second;
@@ -63,9 +85,14 @@ void take_dongles(t_coder *coder)
         first = coder->right_index;
         second = coder->left_index;
     }
-
-    take_one_dongle(coder, first);    
-    take_one_dongle(coder, second);
+    if (!take_one_dongle(coder, first))
+        return (0);
+    if (!take_one_dongle(coder, second))
+    {
+        release_one_dongle(coder, first);
+        return (0);
+    }
+    return (1);
 }
 
 void release_dongles(t_coder *coder)

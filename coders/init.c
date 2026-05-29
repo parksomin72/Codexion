@@ -30,7 +30,8 @@ void init_index(t_coder *coder, int n)
     int i;
     
     i = 0;
-    while (i < n) {
+    while (i < n)
+    {
         coder[i].left_index = i;
         coder[i].right_index = (i + 1) % n;
         i++;

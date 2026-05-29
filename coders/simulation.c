@@ -17,6 +17,7 @@ void set_simulation_stop(t_info *info)
     pthread_mutex_lock(&info->stop_m);
     info->simulation_stop = 1;
     pthread_mutex_unlock(&info->stop_m);
+    wake_all_dongles(info);
 }
 
 void check_simulation_state(t_coder *coder)
@@ -30,7 +31,8 @@ void check_simulation_state(t_coder *coder)
     
     now = get_time_ms() - coder->info->start_time;
 
-    if (now - last >= coder->info->time_to_burnout) {
+    if (now - last >= coder->info->time_to_burnout)
+    {
         print_msg(coder, "burned out");
         set_simulation_stop(coder->info);
     }

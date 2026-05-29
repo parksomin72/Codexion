@@ -26,8 +26,13 @@ int check(char **av, t_info *info)
         if (!av[i][j])
             return (0);
         if (av[i][j] == '+')
+        {
             j++;
-        while (av[i][j]) {
+            if (!av[i][j])
+                return (0);
+        }
+        while (av[i][j])
+        {
             if (!(av[i][j] >= '0' && av[i][j] <= '9'))
                 return (0);
             j++;

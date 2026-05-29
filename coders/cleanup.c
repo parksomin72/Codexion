@@ -40,7 +40,8 @@ int allocate(t_info *info, t_coder **coder, int *n)
     *coder = malloc(sizeof(t_coder) * (*n));
     info->dongles = malloc(sizeof(t_dongle) * (*n));
     
-    if (!*coder || !info->dongles) {
+    if (!*coder || !info->dongles)
+    {
         free(*coder);
         free(info->dongles);
         return (0);

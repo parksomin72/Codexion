@@ -18,7 +18,8 @@ int all_coders_done(t_coder *coder, t_info *info)
     int count;
 
     i = 0;
-    while (i < info->number_of_coders){
+    while (i < info->number_of_coders)
+    {
         pthread_mutex_lock(&coder[i].state_m);
         count = coder[i].compile_count;
         pthread_mutex_unlock(&coder[i].state_m);
@@ -60,7 +61,8 @@ void debug_and_refactor(t_coder *coder)
     }
 }
 
-int main(int ac, char **av) {
+int main(int ac, char **av)
+{
     int n;
     t_info info;
     t_coder *coder;

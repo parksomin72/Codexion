@@ -49,3 +49,26 @@ int request_has_priority(t_request a, t_request b, int scheduler)
     }
     return (0);
 }
+
+void remove_request(t_heap *heap, int coder_id)
+{
+    int i;
+    int j;
+
+    i = 0;
+    while (i < heap->size)
+    {
+        if (heap->arr[i].coder_id == coder_id)
+        {
+            j = i;
+            while (j < heap->size - 1)
+            {
+                heap->arr[j] = heap->arr[j + 1];
+                j++;
+            }
+            heap->size--;
+            return ;
+        }
+        i++;
+    }
+}
