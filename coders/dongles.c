@@ -44,11 +44,11 @@ int take_one_dongle(t_coder *coder, int index)
     }
     if (!simulation_running(coder))
     {
-        remove_request(&dongle->queue, coder->id);
+        remove_request(&dongle->queue, coder->id, coder->info->scheduler);
         pthread_mutex_unlock(&dongle->m);
         return (0);
     }
-    pop_front(&dongle->queue);
+    heap_pop(&dongle->queue, coder->info->scheduler);
     dongle->dongle_available = 0;
     pthread_mutex_unlock(&dongle->m);
     return (1);

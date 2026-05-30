@@ -50,23 +50,27 @@ int request_has_priority(t_request a, t_request b, int scheduler)
     return (0);
 }
 
-void remove_request(t_heap *heap, int coder_id)
+void remove_request(t_heap *heap, int coder_id, int scheduler)
 {
     int i;
-    int j;
+    int parent;
 
     i = 0;
     while (i < heap->size)
     {
         if (heap->arr[i].coder_id == coder_id)
         {
-            j = i;
-            while (j < heap->size - 1)
-            {
-                heap->arr[j] = heap->arr[j + 1];
-                j++;
-            }
+            heap->arr[i] = heap->arr[heap->size - 1];
             heap->size--;
+            while (i > 0)
+            {
+                parent = parent_index(i);
+                if (!request_has_priority(heap->arr[i], heap->arr[parent], scheduler))
+                    break ;
+                swap_request(&heap->arr[i], &heap->arr[parent]);
+                i = parent;
+            }
+            heap_bubble_down(heap, i, scheduler);
             return ;
         }
         i++;

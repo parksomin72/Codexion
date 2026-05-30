@@ -83,7 +83,7 @@ void has_one_coder(t_coder *coder);
 void swap_request(t_request *a, t_request *b);
 void release_one_dongle(t_coder *coder, int index);
 void release_dongles(t_coder *coder);
-void pop_front(t_heap *heap);
+void heap_pop(t_heap *heap, int scheduler);
 void check_simulation_state(t_coder *coder);
 void set_simulation_stop(t_info *info);
 void destroy(t_info *info, t_coder *coder, int n);
@@ -91,7 +91,12 @@ void create_coder_thread(t_coder *coder, t_info *info, int n);
 void print_msg(t_coder *coder, char *msg);
 void debug_and_refactor(t_coder *coder);
 void wake_all_dongles(t_info *info);
-void remove_request(t_heap *heap, int coder_id);
+void heap_bubble_down(t_heap *heap, int i, int scheduler);
+void remove_request(t_heap *heap, int coder_id, int scheduler);
+
+int parent_index(int i);
+int left_child(int i);
+int right_child(int i);
 
 int     check(char **av, t_info *info);
 int     convert(char **av, t_info *coders_info);
@@ -107,6 +112,7 @@ int has_more_compiles(t_coder *coder);
 int all_coders_done(t_coder *coder, t_info *info);
 int take_one_dongle(t_coder *coder, int index);
 int take_dongles(t_coder *coder);
+
 
 
 long    get_time_ms();

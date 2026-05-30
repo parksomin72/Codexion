@@ -12,6 +12,7 @@ SRCS = coders/main.c \
        coders/simulation.c \
        coders/cleanup.c \
        coders/dongles.c \
+       coders/index.c \
        coders/time.c
 
 OBJS = $(SRCS:.c=.o)
